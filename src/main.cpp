@@ -24,6 +24,32 @@ int main(int argc, char* argv[]) {
     config.randomize_matrix();
   }
 
+  // Hardcoded rules for color 0
+  // matrix[ci][0]: color 0 does not affect other colors (except itself)
+  // matrix[0][0]: color 0 strongly repels itself
+  // matrix[0][cj>0]: other colors slightly repel color 0
+  {
+    int n = config.num_colors;
+    auto set = [&](int ci, int cj, float a, float b, float c, float d) {
+      int idx = ci * n + cj;
+      config.matrix_a[idx] = a;
+      config.matrix_b[idx] = b;
+      config.matrix_c[idx] = c;
+      config.matrix_d[idx] = d;
+    };
+    for (int ci = 0; ci < n; ci++) {
+      for (int cj = 0; cj < n; cj++) {
+        if (ci == 0 && cj == 0) {
+          set(0, 0, -1.0f, -1.0f, -1.0f, 0.0f);           // self-repulsion
+        } else if (cj == 0) {
+          set(ci, 0, 0.0f, 0.0f, 0.0f, 0.0f);           // no effect on others
+        } else if (ci == 0) {
+          set(0, cj, -0.2f, -0.05f, -0.02f, 0.0f);          // slightly repelled by others
+        }
+      }
+    }
+  }
+
   std::string save_path = "config_saved.cfg";
   config.save(save_path);
   std::cout << "Saved config to " << save_path << std::endl;
