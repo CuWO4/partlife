@@ -100,21 +100,20 @@ __global__ void compute_acceleration_kernel(
   float half_canvas = canvas_size * 0.5f;
 
   #define ORIGIN_REJECTION -3.0f
-  // (0, ORIGIN_REJECTION), (r_max/10, 0), (r_max/5, a), (2r_max/5, b), (3r_max/5, c), (4r_max/5, d), (r_max, 0)
+  #define CUTOFF 3
+  // (0, ORIGIN_REJECTION), (r_max/10, 0), (r_max/4, a), (2*r_max/4, b), (3*r_max/4, c), (r_max, d), (r_max, 0)
   float r_rep   = r_max * 0.1f;
-  float r1      = r_max * 0.2f;      // r_max/5
-  float r2      = r_max * 0.4f;      // 2r_max/5
-  float r3      = r_max * 0.6f;      // 3r_max/5
-  float r4      = r_max * 0.8f;      // 4r_max/5
+  float r1      = r_max * 0.25f;
+  float r2      = r_max * 0.5f;
+  float r3      = r_max * 0.75f;
   float inv_r_rep = 1.0f / r_rep;
   float inv_r0_r1 = 1.0f / (r1 - r_rep);
   float inv_r1_r2 = 1.0f / (r2 - r1);
   float inv_r2_r3 = 1.0f / (r3 - r2);
-  float inv_r3_r4 = 1.0f / (r4 - r3);
-  float inv_r4_rm = 1.0f / (r_max - r4);
+  float inv_r4_rm = 1.0f / (r_max - r3);
 
-  for (int dy = -1; dy <= 1; dy++) {
-    for (int dx = -1; dx <= 1; dx++) {
+  for (int dy = -CUTOFF; dy <= CUTOFF; dy++) {
+    for (int dx = -CUTOFF; dx <= CUTOFF; dx++) {
       int nx = (cx + dx + grid_dim) % grid_dim;
       int ny = (cy + dy + grid_dim) % grid_dim;
 
@@ -135,7 +134,7 @@ __global__ void compute_acceleration_kernel(
 
         float dist_sq = dx_val * dx_val + dy_val * dy_val;
 
-        if (dist_sq > 0.0f && dist_sq < r_max * r_max) {
+        if (dist_sq > 0.0f && dist_sq < CUTOFF * CUTOFF * r_max * r_max) {
           float dist = sqrtf(dist_sq);
           int cj = particles[j].color;
 
@@ -157,17 +156,17 @@ __global__ void compute_acceleration_kernel(
           } else if (dist < r3) {
             float t = (dist - r2) * inv_r2_r3;
             accel = b_val + (c_val - b_val) * t;
-          } else if (dist < r4) {
-            float t = (dist - r3) * inv_r3_r4;
-            accel = c_val + (d_val - c_val) * t;
-          } else {
-            float t = (dist - r4) * inv_r4_rm;
+          } else if (dist < r_max) {
+            float t = (dist - r_max) * inv_r4_rm;
             accel = d_val * (1.0f - t);
+          } else /* dist >= r_max */ {
+            accel = d_val;
           }
 
           float inv_dist = 1.0f / dist;
-          total_ax += accel * dx_val * inv_dist;
-          total_ay += accel * dy_val * inv_dist;
+          float dist_factor = inv_dist * sqrtf(inv_dist) * r_max;
+          total_ax += accel * dx_val * dist_factor;
+          total_ay += accel * dy_val * dist_factor;
         }
       }
     }
