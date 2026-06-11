@@ -1,0 +1,4 @@
+tmp/
+debug/
+.*/
+config_saved.cfg
