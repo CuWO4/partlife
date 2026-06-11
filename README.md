@@ -7,7 +7,7 @@ GPU-accelerated particle life simulation
 
 ---
 
-[Demo](assets/50000-32colors-20factor.gif)
+![Demo](assets/50000-32colors-20factor.webp)
 
 Simulation of 50,000 particles running at 60 FPS on an RTX 5070.
 

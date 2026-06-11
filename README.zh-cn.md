@@ -7,7 +7,7 @@ GPU-based 粒子生命模拟
 
 ---
 
-[效果](assets/50000-32colors-20factor.gif)
+![效果](assets/50000-32colors-20factor.webp)
 
 图为 50000 粒子模拟, 在我本地 RTX 5070 下能跑 60 FPS.
 
