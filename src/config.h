@@ -25,9 +25,11 @@ struct Config {
   float damping;
   float speed_limit;
 
-  // matrix_a[c1 * num_colors + c2], matrix_b[c1 * num_colors + c2]
+  // matrix_a/b/c/d[c1 * num_colors + c2]
   std::vector<float> matrix_a;
   std::vector<float> matrix_b;
+  std::vector<float> matrix_c;
+  std::vector<float> matrix_d;
 
   static constexpr int max_colors = 32;
   static const float bright_colors[max_colors][3];
@@ -60,6 +62,10 @@ struct Config {
         matrix_a = parse_floats(value);
       } else if (key == "matrix_b") {
         matrix_b = parse_floats(value);
+      } else if (key == "matrix_c") {
+        matrix_c = parse_floats(value);
+      } else if (key == "matrix_d") {
+        matrix_d = parse_floats(value);
       }
     } catch (const std::exception& e) {
       std::cerr << "Warning: Failed to parse '" << key << "': " << e.what() << std::endl;
@@ -77,7 +83,8 @@ struct Config {
     }
 
     int expected = num_colors * num_colors;
-    if ((int)matrix_a.size() != expected || (int)matrix_b.size() != expected) {
+    if ((int)matrix_a.size() != expected || (int)matrix_b.size() != expected ||
+        (int)matrix_c.size() != expected || (int)matrix_d.size() != expected) {
       randomize_matrix();
       return true;
     }
@@ -88,10 +95,14 @@ struct Config {
     int n = num_colors * num_colors;
     matrix_a.resize(n);
     matrix_b.resize(n);
+    matrix_c.resize(n);
+    matrix_d.resize(n);
     std::srand(std::time(nullptr));
     for (int i = 0; i < n; i++) {
       matrix_a[i] = 2.0f * ((float)std::rand() / RAND_MAX) - 1.0f;
       matrix_b[i] = 2.0f * ((float)std::rand() / RAND_MAX) - 1.0f;
+      matrix_c[i] = 2.0f * ((float)std::rand() / RAND_MAX) - 1.0f;
+      matrix_d[i] = 2.0f * ((float)std::rand() / RAND_MAX) - 1.0f;
     }
   }
 
@@ -118,6 +129,20 @@ struct Config {
     for (size_t i = 0; i < matrix_b.size(); i++) {
       if (i > 0) file << ", ";
       file << matrix_b[i];
+    }
+    file << "\n";
+
+    file << "matrix_c = ";
+    for (size_t i = 0; i < matrix_c.size(); i++) {
+      if (i > 0) file << ", ";
+      file << matrix_c[i];
+    }
+    file << "\n";
+
+    file << "matrix_d = ";
+    for (size_t i = 0; i < matrix_d.size(); i++) {
+      if (i > 0) file << ", ";
+      file << matrix_d[i];
     }
     file << "\n";
   }

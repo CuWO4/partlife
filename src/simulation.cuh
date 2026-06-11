@@ -24,6 +24,8 @@ private:
   int* d_cell_ends;
   float* d_matrix_a;
   float* d_matrix_b;
+  float* d_matrix_c;
+  float* d_matrix_d;
   Particle* d_sorted_particles;
 
   int num_cells;

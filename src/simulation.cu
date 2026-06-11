@@ -70,6 +70,8 @@ __global__ void compute_acceleration_kernel(
   const int* cell_ends,
   const float* matrix_a,
   const float* matrix_b,
+  const float* matrix_c,
+  const float* matrix_d,
   float* ax,
   float* ay,
   int n,
@@ -98,14 +100,18 @@ __global__ void compute_acceleration_kernel(
   float half_canvas = canvas_size * 0.5f;
 
   #define ORIGIN_REJECTION -3.0f
-  // Piecewise: (0, ORIGIN_REJECTION), (r_max/10, 0), (r_max/3, a), (2*r_max/3, b), (r_max, 0)
-  float r_rep = r_max * 0.1f;
-  float r_third = r_max / 3.0f;
-  float r_two_third = 2.0f * r_max / 3.0f;
+  // (0, ORIGIN_REJECTION), (r_max/10, 0), (r_max/5, a), (2r_max/5, b), (3r_max/5, c), (4r_max/5, d), (r_max, 0)
+  float r_rep   = r_max * 0.1f;
+  float r1      = r_max * 0.2f;      // r_max/5
+  float r2      = r_max * 0.4f;      // 2r_max/5
+  float r3      = r_max * 0.6f;      // 3r_max/5
+  float r4      = r_max * 0.8f;      // 4r_max/5
   float inv_r_rep = 1.0f / r_rep;
-  float inv_r_rep_to_a = 1.0f / (r_third - r_rep);
-  float inv_r_a_to_b = 1.0f / (r_two_third - r_third);
-  float inv_r_b_to_0 = 1.0f / (r_max - r_two_third);
+  float inv_r0_r1 = 1.0f / (r1 - r_rep);
+  float inv_r1_r2 = 1.0f / (r2 - r1);
+  float inv_r2_r3 = 1.0f / (r3 - r2);
+  float inv_r3_r4 = 1.0f / (r4 - r3);
+  float inv_r4_rm = 1.0f / (r_max - r4);
 
   for (int dy = -1; dy <= 1; dy++) {
     for (int dx = -1; dx <= 1; dx++) {
@@ -133,21 +139,30 @@ __global__ void compute_acceleration_kernel(
           float dist = sqrtf(dist_sq);
           int cj = particles[j].color;
 
-          float a_val = matrix_a[ci * num_colors + cj];
-          float b_val = matrix_b[ci * num_colors + cj];
+          int idx = ci * num_colors + cj;
+          float a_val = matrix_a[idx];
+          float b_val = matrix_b[idx];
+          float c_val = matrix_c[idx];
+          float d_val = matrix_d[idx];
 
           float accel;
           if (dist < r_rep) {
             accel = ORIGIN_REJECTION + dist * inv_r_rep;
-          } else if (dist < r_third) {
-            float t = (dist - r_rep) * inv_r_rep_to_a;
-            accel = ORIGIN_REJECTION + (a_val - ORIGIN_REJECTION) * t;
-          } else if (dist < r_two_third) {
-            float t = (dist - r_third) * inv_r_a_to_b;
+          } else if (dist < r1) {
+            float t = (dist - r_rep) * inv_r0_r1;
+            accel = a_val * t;
+          } else if (dist < r2) {
+            float t = (dist - r1) * inv_r1_r2;
             accel = a_val + (b_val - a_val) * t;
+          } else if (dist < r3) {
+            float t = (dist - r2) * inv_r2_r3;
+            accel = b_val + (c_val - b_val) * t;
+          } else if (dist < r4) {
+            float t = (dist - r3) * inv_r3_r4;
+            accel = c_val + (d_val - c_val) * t;
           } else {
-            float t = (dist - r_two_third) * inv_r_b_to_0;
-            accel = b_val * (1.0f - t);
+            float t = (dist - r4) * inv_r4_rm;
+            accel = d_val * (1.0f - t);
           }
 
           float inv_dist = 1.0f / dist;
@@ -162,22 +177,26 @@ __global__ void compute_acceleration_kernel(
   ay[i] = total_ay;
 }
 
-__global__ void drift_matrix_kernel(float* matrix_a, float* matrix_b, int size) {
+__global__ void drift_matrix_kernel(float* a, float* b, float* c, float* d, int size) {
   int i = blockIdx.x * blockDim.x + threadIdx.x;
   if (i >= size) return;
 
   unsigned long long rng = (unsigned long long)(i * 2654435761ULL + clock64());
-  rng = rng * 6364136223846793005ULL + 1442695040888963407ULL;
-  float drift_a = ((rng >> 33) & 1) ? 0.01f : -0.01f;
-  matrix_a[i] += drift_a;
-  if (matrix_a[i] > 1.0f) matrix_a[i] = 1.0f;
-  if (matrix_a[i] < -1.0f) matrix_a[i] = -1.0f;
+  auto drift = [&]() -> float {
+    rng = rng * 6364136223846793005ULL + 1442695040888963407ULL;
+    return ((rng >> 33) & 1) ? 0.01f : -0.01f;
+  };
 
-  rng = rng * 6364136223846793005ULL + 1442695040888963407ULL;
-  float drift_b = ((rng >> 33) & 1) ? 0.01f : -0.01f;
-  matrix_b[i] += drift_b;
-  if (matrix_b[i] > 1.0f) matrix_b[i] = 1.0f;
-  if (matrix_b[i] < -1.0f) matrix_b[i] = -1.0f;
+  auto apply = [](float& v, float d) {
+    v += d;
+    if (v > 1.0f) v = 1.0f;
+    if (v < -1.0f) v = -1.0f;
+  };
+
+  apply(a[i], drift());
+  apply(b[i], drift());
+  apply(c[i], drift());
+  apply(d[i], drift());
 }
 
 __global__ void update_kernel(
@@ -231,9 +250,13 @@ Simulation::Simulation(const Config& cfg)
   int matrix_size = config.num_colors * config.num_colors;
   cudaMalloc(&d_matrix_a, matrix_size * sizeof(float));
   cudaMalloc(&d_matrix_b, matrix_size * sizeof(float));
+  cudaMalloc(&d_matrix_c, matrix_size * sizeof(float));
+  cudaMalloc(&d_matrix_d, matrix_size * sizeof(float));
 
   cudaMemcpy(d_matrix_a, config.matrix_a.data(), matrix_size * sizeof(float), cudaMemcpyHostToDevice);
   cudaMemcpy(d_matrix_b, config.matrix_b.data(), matrix_size * sizeof(float), cudaMemcpyHostToDevice);
+  cudaMemcpy(d_matrix_c, config.matrix_c.data(), matrix_size * sizeof(float), cudaMemcpyHostToDevice);
+  cudaMemcpy(d_matrix_d, config.matrix_d.data(), matrix_size * sizeof(float), cudaMemcpyHostToDevice);
 
   init_particles();
 
@@ -249,6 +272,8 @@ Simulation::~Simulation() {
   cudaFree(d_cell_ends);
   cudaFree(d_matrix_a);
   cudaFree(d_matrix_b);
+  cudaFree(d_matrix_c);
+  cudaFree(d_matrix_d);
   cudaFree(d_sorted_particles);
 }
 
@@ -293,7 +318,7 @@ void Simulation::step() {
 
   compute_acceleration_kernel<<<grid_size, block_size>>>(
     d_particles, d_cell_starts, d_cell_ends,
-    d_matrix_a, d_matrix_b,
+    d_matrix_a, d_matrix_b, d_matrix_c, d_matrix_d,
     d_ax, d_ay, n, config.r_max, config.canvas_size(), grid_dim,
     config.num_colors);
 
@@ -311,7 +336,7 @@ void Simulation::step() {
   if (frame_count % 60 == 0) {
     int matrix_size = config.num_colors * config.num_colors;
     int mgrid = (matrix_size + BLOCK_SIZE - 1) / BLOCK_SIZE;
-    drift_matrix_kernel<<<mgrid, BLOCK_SIZE>>>(d_matrix_a, d_matrix_b, matrix_size);
+    drift_matrix_kernel<<<mgrid, BLOCK_SIZE>>>(d_matrix_a, d_matrix_b, d_matrix_c, d_matrix_d, matrix_size);
     cudaDeviceSynchronize();
   }
 }
