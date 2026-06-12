@@ -206,6 +206,7 @@ __global__ void update_kernel(
   float dt,
   float damping,
   float speed_limit,
+  float thermal_intensity,
   float canvas_size)
 {
   int i = blockIdx.x * blockDim.x + threadIdx.x;
@@ -216,6 +217,23 @@ __global__ void update_kernel(
 
   particles[i].vx *= damping;
   particles[i].vy *= damping;
+
+  if (thermal_intensity > 0.0f) {
+    unsigned long long rng = (unsigned long long)(i * 6364136223846793005ULL + clock64());
+    rng = rng * 6364136223846793005ULL + 1442695040888963407ULL;
+    float rx = (float)(rng >> 33) / (float)(1ULL << 31);
+    rng = rng * 6364136223846793005ULL + 1442695040888963407ULL;
+    float ry = (float)(rng >> 33) / (float)(1ULL << 31);
+    float len = sqrtf(rx * rx + ry * ry);
+    if (len > 0.0f) {
+      rx /= len;
+      ry /= len;
+    }
+    rng = rng * 6364136223846793005ULL + 1442695040888963407ULL;
+    float mag = (float)(rng >> 33) / (float)(1ULL << 31);
+    particles[i].vx += rx * mag * thermal_intensity * dt;
+    particles[i].vy += ry * mag * thermal_intensity * dt;
+  }
 
   float speed_sq = particles[i].vx * particles[i].vx + particles[i].vy * particles[i].vy;
   if (speed_sq > speed_limit * speed_limit) {
@@ -324,6 +342,7 @@ void Simulation::step() {
   update_kernel<<<grid_size, block_size>>>(
     d_particles, d_ax, d_ay, n,
     config.dt, config.damping, config.speed_limit,
+    config.thermal_motion_intensity,
     config.canvas_size());
 
   cudaFree(d_ax);

@@ -24,6 +24,7 @@ struct Config {
   float dt;
   float damping;
   float speed_limit;
+  float thermal_motion_intensity;
 
   // matrix_a/b/c/d[c1 * num_colors + c2]
   std::vector<float> matrix_a;
@@ -58,6 +59,8 @@ struct Config {
         damping = std::stof(value);
       } else if (key == "speed_limit") {
         speed_limit = std::stof(value);
+      } else if (key == "thermal_motion_intensity") {
+        thermal_motion_intensity = std::stof(value);
       } else if (key == "matrix_a") {
         matrix_a = parse_floats(value);
       } else if (key == "matrix_b") {
@@ -117,6 +120,7 @@ struct Config {
     file << "dt = " << dt << "\n";
     file << "damping = " << damping << "\n";
     file << "speed_limit = " << speed_limit << "\n";
+    file << "thermal_motion_intensity = " << thermal_motion_intensity << "\n";
 
     file << "matrix_a = ";
     for (size_t i = 0; i < matrix_a.size(); i++) {
