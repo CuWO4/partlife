@@ -12,13 +12,13 @@ __global__ void init_kernel(Particle* particles, int n, float canvas_size, int n
   if (i >= n) return;
 
   unsigned long long rng = seed + i * 6364136223846793005ULL;
-  rng = rng * 6364136223846793005ULL + 1442695040888963407ULL;
+  rng = (rng * 6364136223846793005ULL + 1442695040888963407ULL) ^ (rng << 7) ^ (rng >> 23);
   particles[i].x = (float)(rng >> 33) / (float)(1ULL << 31) * canvas_size;
-  rng = rng * 6364136223846793005ULL + 1442695040888963407ULL;
+  rng = (rng * 6364136223846793005ULL + 1442695040888963407ULL) ^ (rng << 7) ^ (rng >> 23);
   particles[i].y = (float)(rng >> 33) / (float)(1ULL << 31) * canvas_size;
   particles[i].vx = 0.0f;
   particles[i].vy = 0.0f;
-  rng = rng * 6364136223846793005ULL + 1442695040888963407ULL;
+  rng = (rng * 6364136223846793005ULL + 1442695040888963407ULL) ^ (rng << 7) ^ (rng >> 23);
   particles[i].color = (int)((float)(rng >> 33) / (float)(1ULL << 31) * num_colors);
   if (particles[i].color >= num_colors) particles[i].color = num_colors - 1;
   if (particles[i].color < 0) particles[i].color = 0;
@@ -99,15 +99,13 @@ __global__ void compute_acceleration_kernel(
 
   float half_canvas = canvas_size * 0.5f;
 
-  #define ORIGIN_REJECTION -3.0f
-  #define CUTOFF 3
-  // (0, ORIGIN_REJECTION), (r_max/10, 0), (r_max/4, a), (2*r_max/4, b), (3*r_max/4, c), (r_max, d), (r_max, 0)
-  float r_rep   = r_max * 0.1f;
+  #define ORIGIN_REJECTION -10.0f
+  #define CUTOFF 5
+  // (0, ORIGIN_REJECTION), (r_max/4, a), (2*r_max/4, b), (3*r_max/4, c), (r_max, d)
   float r1      = r_max * 0.25f;
   float r2      = r_max * 0.5f;
   float r3      = r_max * 0.75f;
-  float inv_r_rep = 1.0f / r_rep;
-  float inv_r0_r1 = 1.0f / (r1 - r_rep);
+  float inv_r0_r1 = 1.0f / (r1 - 0);
   float inv_r1_r2 = 1.0f / (r2 - r1);
   float inv_r2_r3 = 1.0f / (r3 - r2);
   float inv_r4_rm = 1.0f / (r_max - r3);
@@ -145,11 +143,9 @@ __global__ void compute_acceleration_kernel(
           float d_val = matrix_d[idx];
 
           float accel;
-          if (dist < r_rep) {
-            accel = ORIGIN_REJECTION + dist * inv_r_rep;
-          } else if (dist < r1) {
-            float t = (dist - r_rep) * inv_r0_r1;
-            accel = a_val * t;
+          if (dist < r1) {
+            float t = (dist - 0) * inv_r0_r1;
+            accel = ORIGIN_REJECTION + (a_val - ORIGIN_REJECTION) * t;
           } else if (dist < r2) {
             float t = (dist - r1) * inv_r1_r2;
             accel = a_val + (b_val - a_val) * t;
@@ -164,7 +160,7 @@ __global__ void compute_acceleration_kernel(
           }
 
           float inv_dist = 1.0f / dist;
-          float dist_factor = inv_dist * sqrtf(inv_dist) * r_max;
+          float dist_factor = inv_dist * inv_dist * r_max;
           total_ax += accel * dx_val * dist_factor;
           total_ay += accel * dy_val * dist_factor;
         }
@@ -182,7 +178,7 @@ __global__ void drift_matrix_kernel(float* a, float* b, float* c, float* d, int 
 
   unsigned long long rng = (unsigned long long)(i * 2654435761ULL + clock64());
   auto drift = [&]() -> float {
-    rng = rng * 6364136223846793005ULL + 1442695040888963407ULL;
+    rng = (rng * 6364136223846793005ULL + 1442695040888963407ULL) ^ (rng << 7) ^ (rng >> 23);
     return ((rng >> 33) & 1) ? 0.01f : -0.01f;
   };
 
@@ -220,16 +216,16 @@ __global__ void update_kernel(
 
   if (thermal_intensity > 0.0f) {
     unsigned long long rng = (unsigned long long)(i * 6364136223846793005ULL + clock64());
-    rng = rng * 6364136223846793005ULL + 1442695040888963407ULL;
+    rng = (rng * 6364136223846793005ULL + 1442695040888963407ULL) ^ (rng << 7) ^ (rng >> 23);
     float rx = (float)(rng >> 33) / (float)(1ULL << 31);
-    rng = rng * 6364136223846793005ULL + 1442695040888963407ULL;
+    rng = (rng * 6364136223846793005ULL + 1442695040888963407ULL) ^ (rng << 7) ^ (rng >> 23);
     float ry = (float)(rng >> 33) / (float)(1ULL << 31);
     float len = sqrtf(rx * rx + ry * ry);
     if (len > 0.0f) {
       rx /= len;
       ry /= len;
     }
-    rng = rng * 6364136223846793005ULL + 1442695040888963407ULL;
+    rng = (rng * 6364136223846793005ULL + 1442695040888963407ULL) ^ (rng << 7) ^ (rng >> 23);
     float mag = (float)(rng >> 33) / (float)(1ULL << 31);
     particles[i].vx += rx * mag * thermal_intensity * dt;
     particles[i].vy += ry * mag * thermal_intensity * dt;
